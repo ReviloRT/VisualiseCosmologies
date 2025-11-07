@@ -42,6 +42,10 @@ class SpaceTime:
             {"pos": [float(o.pos[0]), float(o.pos[1])]}
             for o in self.objects
         ]
+    
+    def render_from_observer(self):
+        for obj in self.objects:
+            yield obj.pos
 
 # -------------------- Renderer / Controller --------------------
 
@@ -61,10 +65,15 @@ class Simulator:
         self.running = True
         self.paused = False
         self._last_save = time.time()
-        # simulation time (seconds)
+        # simulation time (seconds) - advances only when not paused
         self.sim_time = 0.0
-        # font for HUD (time counter)
-        self.font = pygame.font.SysFont(None, 24)
+        # initialize font for HUD (time counter)
+        try:
+            # pygame.font is initialized as part of pygame.init(), but ensure font module is ready
+            pygame.font.init()
+            self.font = pygame.font.SysFont(None, 24)
+        except Exception:
+            self.font = None
         self.snapshots_dir = os.path.join(os.path.dirname(__file__), "snapshots")
         os.makedirs(self.snapshots_dir, exist_ok=True)
 
@@ -92,21 +101,21 @@ class Simulator:
     def draw(self):
         # black background, white dots
         self.screen.fill((0, 0, 0))
-        for o in self.space.objects:
-            sx, sy = self.world_to_screen(o.pos[0], o.pos[1])
+        for pos in self.space.render_from_observer():
+            sx, sy = self.world_to_screen(pos[0], pos[1])
             r = int(self.dot_size)
             pygame.draw.circle(self.screen, (255, 255, 255), (sx, sy), r)
 
         # draw simulation time in top-right corner
-        try:
-            time_text = f"t = {self.sim_time:.2f}s"
-            text_surf = self.font.render(time_text, True, (255, 255, 255))
-            tx = self.width - text_surf.get_width() - 10
-            ty = 10
-            self.screen.blit(text_surf, (tx, ty))
-        except Exception:
-            # font rendering shouldn't break the main loop; ignore if unavailable
-            pass
+        if self.font is not None:
+            try:
+                time_text = f"t = {self.sim_time:.2f}s"
+                text_surf = self.font.render(time_text, True, (255, 255, 255))
+                tx = self.width - text_surf.get_width() - 10
+                ty = 10
+                self.screen.blit(text_surf, (tx, ty))
+            except Exception:
+                pass
         pygame.display.flip()
 
     def save_snapshot(self):
@@ -125,7 +134,7 @@ class Simulator:
             self.handle_events()
             if not self.paused:
                 self.space.step(dt)
-                # advance simulation time only when running
+                # advance simulation time only while running
                 self.sim_time += dt
 
             self.draw()
