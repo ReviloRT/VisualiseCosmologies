@@ -33,12 +33,17 @@ class SpaceObject:
 
 class SpaceTime:
     scale_factor: float = 1.0
-    expansion_rate: float = 0.2  # units per second
+    omega_matter = 0.3
+    omega_dark_energy = 0.7
+    hubble_param = 1.0
+    t_scale = 0.1
+    
     def __init__(self, objects=None):
         self.objects = objects or []
 
-    def step(self, dt: float):
-        self.scale_factor += self.expansion_rate * dt
+    def step(self, dt: float, time: float):
+        self.t_lambda = 2.0 / 3.0 / self.hubble_param / math.sqrt(self.omega_dark_energy) / self.t_scale
+        self.scale_factor = (self.omega_matter / self.omega_dark_energy)**(1/3) * math.sinh(time/self.t_lambda)**(2/3)
         pass
 
     def snapshot(self):
@@ -132,7 +137,11 @@ class Simulator:
             pygame.draw.circle(self.screen, colour, (sx, sy), r)
 
         # draw HUD (use draw_hud for multiple label/value pairs)
-        self.draw_hud([("t", f"{self.sim_time:.2f}s"),("a", f"{self.space.scale_factor:.2f}")])
+        self.draw_hud([
+                ("t", f"{self.sim_time:.2f}s"),
+                ("a", f"{self.space.scale_factor:.2f}"),
+                ("t_Λ", f"{self.space.t_lambda:.2f}s")
+            ])
         pygame.display.flip()
 
     def save_snapshot(self):
@@ -150,7 +159,7 @@ class Simulator:
             dt = dt_ms / 1000.0
             self.handle_events()
             if not self.paused:
-                self.space.step(dt)
+                self.space.step(dt, self.sim_time)
                 # advance simulation time only while running
                 self.sim_time += dt
 
@@ -165,7 +174,7 @@ class Simulator:
 
 # -------------------- Utilities / Example setup --------------------
 
-def random_space(num=100, spread=200.0):
+def random_space(num=100, spread=20.0):
     objs = []
     for _ in range(num):
         # uniform distribution within a circle of radius `spread`
