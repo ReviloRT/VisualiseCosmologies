@@ -29,12 +29,16 @@ except Exception as e:
 @dataclass
 class SpaceObject:
     pos: list  # [x, y]
+    last_apparent_pos: list = None  # [x, y]
 
 class SpaceTime:
+    scale_factor: float = 1.0
+    expansion_rate: float = 0.2  # units per second
     def __init__(self, objects=None):
         self.objects = objects or []
 
     def step(self, dt: float):
+        self.scale_factor += self.expansion_rate * dt
         pass
 
     def snapshot(self):
@@ -43,9 +47,12 @@ class SpaceTime:
             for o in self.objects
         ]
     
-    def render_from_observer(self):
+    def render_from_observer(self, time):
         for obj in self.objects:
-            yield obj.pos
+            obj.new_pos = [obj.pos[0]*self.scale_factor, obj.pos[1]*self.scale_factor]
+            colour = (255, 255, 255)
+            yield obj.new_pos, colour
+            obj.last_apparent_pos = obj.new_pos
 
 # -------------------- Renderer / Controller --------------------
 
@@ -98,24 +105,34 @@ class Simulator:
                 elif ev.key == pygame.K_MINUS or ev.key == pygame.K_UNDERSCORE:
                     self.dot_size /= 1.2
 
+    def draw_hud(self, items, padding=10, spacing=4):
+        """Render a list of (label, value) pairs in the top-right corner.
+        items: iterable of (label, value) where value will be formatted as str.
+        """
+        if not hasattr(self, 'font') or self.font is None:
+            return
+        # start drawing at top with padding
+        y = padding
+        for label, value in items:
+            text = f"{label}: {value}"
+            try:
+                surf = self.font.render(str(text), True, (255, 255, 255))
+            except Exception:
+                continue
+            x = self.width - surf.get_width() - padding
+            self.screen.blit(surf, (x, y))
+            y += surf.get_height() + spacing
+
     def draw(self):
         # black background, white dots
         self.screen.fill((0, 0, 0))
-        for pos in self.space.render_from_observer():
+        for pos, colour in self.space.render_from_observer(self.sim_time):
             sx, sy = self.world_to_screen(pos[0], pos[1])
             r = int(self.dot_size)
-            pygame.draw.circle(self.screen, (255, 255, 255), (sx, sy), r)
+            pygame.draw.circle(self.screen, colour, (sx, sy), r)
 
-        # draw simulation time in top-right corner
-        if self.font is not None:
-            try:
-                time_text = f"t = {self.sim_time:.2f}s"
-                text_surf = self.font.render(time_text, True, (255, 255, 255))
-                tx = self.width - text_surf.get_width() - 10
-                ty = 10
-                self.screen.blit(text_surf, (tx, ty))
-            except Exception:
-                pass
+        # draw HUD (use draw_hud for multiple label/value pairs)
+        self.draw_hud([("t", f"{self.sim_time:.2f}s"),("a", f"{self.space.scale_factor:.2f}")])
         pygame.display.flip()
 
     def save_snapshot(self):
@@ -148,11 +165,14 @@ class Simulator:
 
 # -------------------- Utilities / Example setup --------------------
 
-def random_space(num=100, spread=200.0, speed=20.0):
+def random_space(num=100, spread=200.0):
     objs = []
     for _ in range(num):
-        x = random.uniform(-spread, spread)
-        y = random.uniform(-spread, spread)
+        # uniform distribution within a circle of radius `spread`
+        theta = random.uniform(0, 2 * math.pi)
+        r = spread * math.sqrt(random.random())  # sqrt for uniform area
+        x = r * math.cos(theta)
+        y = r * math.sin(theta)
         objs.append(SpaceObject([x, y]))
     return SpaceTime(objs)
 
