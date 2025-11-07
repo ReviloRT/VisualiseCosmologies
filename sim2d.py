@@ -131,8 +131,8 @@ class SpaceTime:
     def step(self, dt: float, time: float): 
         # Replace with different expansion models
         
-        # self.lambda_cdm(dt, time)
-        self.constant(dt, time)
+        self.lambda_cdm(dt, time)
+        # self.constant(dt, time)
         # self.update_light_speed(dt, time)
 
 
@@ -161,7 +161,6 @@ class SpaceTime:
         for _ in range(max_iterations):
             a_avg = self.scale_factor.integrate(now - time_estimate) / time_estimate
             new_time_estimate = (a_avg) * distance / self.light_speed
-            print(distance, time_estimate, new_time_estimate, a_avg)
             if abs(new_time_estimate - time_estimate) < tolerance:
                 break
             time_estimate = 0.5 * (time_estimate + new_time_estimate)  # relax the update to help convergence
@@ -264,7 +263,7 @@ def main():
 
     args = parser.parse_args()
 
-    space = random_space(100, 200)
+    space = random_space(args.num, args.spread)
     sim = Simulator(space, width=args.width, height=args.height, scale=args.scale, dot_size=args.dot_size, save_interval=args.save_interval)
     init_ui(sim)
     sim.run(60, draw, [(20, update_graph)])
@@ -272,3 +271,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# python sim2d.py --num 200 --spread 500
