@@ -116,12 +116,11 @@ class TimeValue:
 
 class SpaceTime:
     integrate_on_scale: bool = True
-    scale_factor: TimeValue = TimeValue(1.0)
+    scale_factor: TimeValue = TimeValue(0.1)
     light_speed: TimeValue = TimeValue(10.0)
-    expansion_rate: float = 1
     omega_matter: float = 0.3
     omega_dark_energy: float = 0.7
-    hubble_param: float = 0.1
+    hubble_param: float = 0.5
     t_lambda: float = 0.0
 
 
@@ -132,20 +131,26 @@ class SpaceTime:
         # Replace with different expansion models
         
         # self.lambda_cdm(dt, time)
-        self.constant(dt, time)
+        # self.constant(dt, time)
         # self.update_light_speed(dt, time)
+        self.cyclic_cosmology(dt, time)
+        # self.big_bounce(dt, time)
 
+    def cyclic_cosmology(self, dt: float, time: float):
+        self.scale_factor.update(1.5*math.sin(time*self.hubble_param), time)
+
+    def big_bounce(self, dt: float, time: float):
+        self.scale_factor.update(abs(math.sin(time*0.01)) + 1, time)
 
     def update_light_speed(self, dt: float, time: float):
         self.light_speed.update(self.light_speed.get() * 0.99, time)
         integrate_on_scale = False
 
-
     def static(self, dt: float, time: float):
         pass
 
     def constant(self, dt: float, time: float):
-        self.scale_factor.update(self.scale_factor.get() + self.expansion_rate * dt, time)
+        self.scale_factor.update(self.scale_factor.get() + self.hubble_param * dt, time)
 
     def lambda_cdm(self, dt: float, time: float):
         self.t_lambda = 2.0 / 3.0 / self.hubble_param / math.sqrt(self.omega_dark_energy)
@@ -157,11 +162,12 @@ class SpaceTime:
         distance = math.sqrt(obj.pos[0]**2 + obj.pos[1]**2)
         if distance < 1e-6:
             return now
+        if self.light_speed.get() < 1e-6:
+            return now
         time_estimate = distance / self.light_speed
         for _ in range(max_iterations):
             a_avg = self.scale_factor.integrate(now - time_estimate) / time_estimate
             new_time_estimate = (a_avg) * distance / self.light_speed
-            print(distance, time_estimate, new_time_estimate, a_avg)
             if abs(new_time_estimate - time_estimate) < tolerance:
                 break
             time_estimate = 0.5 * (time_estimate + new_time_estimate)  # relax the update to help convergence
@@ -212,6 +218,16 @@ def random_space(num=100, spread=200.0):
         objs.append(SpaceObject([x, y]))
     return SpaceTime(objs)
 
+def space_space(num=200, scale=200.0, jitter=0.02):
+    objs = []
+    for i in range(num):
+        t = random.uniform(0, 2 * math.pi)
+        x = 16 * math.sin(t) ** 3
+        y = 13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)
+        x *= scale / 17.0
+        y *= scale / 17.0
+        objs.append(SpaceObject([x, y]))
+    return SpaceTime(objs)
     
 # UI helper functions
 def init_ui(simulator):
@@ -264,10 +280,10 @@ def main():
 
     args = parser.parse_args()
 
-    space = random_space(100, 200)
+    space = space_space(500, 200) # :)
     sim = Simulator(space, width=args.width, height=args.height, scale=args.scale, dot_size=args.dot_size, save_interval=args.save_interval)
     init_ui(sim)
-    sim.run(60, draw, [(20, update_graph)])
+    sim.run(30, draw, [(20, update_graph)])
 
 
 if __name__ == '__main__':
