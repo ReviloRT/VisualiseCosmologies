@@ -18,6 +18,7 @@ class SpaceObject:
 # Class for storing, interpolating and integrating a single value over time
 class TimeValue:
     def __init__(self, initial_value=0.0):
+        self.initial_value = initial_value
         self.value = initial_value
         self.history = []
 
@@ -114,9 +115,10 @@ class TimeValue:
 
 
 class SpaceTime:
+    integrate_on_scale: bool = True
     scale_factor: TimeValue = TimeValue(1.0)
     light_speed: TimeValue = TimeValue(10.0)
-    expansion_rate: float = 1.0
+    expansion_rate: float = 1
     omega_matter: float = 0.3
     omega_dark_energy: float = 0.7
     hubble_param: float = 0.1
@@ -126,19 +128,24 @@ class SpaceTime:
     def __init__(self, objects=None):
         self.objects = objects or []
 
-    def step(self, dt: float, time: float):
+    def step(self, dt: float, time: float): 
+        # Replace with different expansion models
+        
         # self.lambda_cdm(dt, time)
         self.constant(dt, time)
+        # self.update_light_speed(dt, time)
 
 
-    def light_speed(self, dt: float, time: float):
-        self.light_speed *= 0.1
+    def update_light_speed(self, dt: float, time: float):
+        self.light_speed.update(self.light_speed.get() * 0.99, time)
+        integrate_on_scale = False
+
 
     def static(self, dt: float, time: float):
         pass
 
     def constant(self, dt: float, time: float):
-        self.scale_factor += self.expansion_rate * dt
+        self.scale_factor.update(self.scale_factor.get() + self.expansion_rate * dt, time)
 
     def lambda_cdm(self, dt: float, time: float):
         self.t_lambda = 2.0 / 3.0 / self.hubble_param / math.sqrt(self.omega_dark_energy)
@@ -157,7 +164,23 @@ class SpaceTime:
             print(distance, time_estimate, new_time_estimate, a_avg)
             if abs(new_time_estimate - time_estimate) < tolerance:
                 break
-            time_estimate = (time_estimate + new_time_estimate) / 2
+            time_estimate = 0.5 * (time_estimate + new_time_estimate)  # relax the update to help convergence
+        return now - time_estimate
+
+
+
+    def get_observed_time_over_time(self, obj, now, max_iterations=10, tolerance=0.01):
+        distance = math.sqrt(obj.pos[0]**2 + obj.pos[1]**2)
+        if distance < 1e-6:
+            return now
+        time_estimate = distance / self.light_speed
+        for _ in range(max_iterations):
+            c_avg = self.light_speed.integrate(now - time_estimate)/time_estimate
+            new_time_estimate = distance / c_avg
+            if abs(new_time_estimate - time_estimate) < tolerance:
+                time_estimate = new_time_estimate
+                break
+            time_estimate = 0.5 * (time_estimate + new_time_estimate)  # relax the update to help convergence
         return now - time_estimate
 
     def snapshot(self):
@@ -166,11 +189,18 @@ class SpaceTime:
     def render_from_observer(self, time):
         for obj in self.objects:
             obj.pos = [obj.dim_pos[0] * self.scale_factor, obj.dim_pos[1] * self.scale_factor]
-            obs_time = self.get_observed_time_over_scale(obj, time)
-            obs_scale = self.scale_factor.get_at_time(obs_time)
-            obs_pos = [obj.dim_pos[0] * obs_scale, obj.dim_pos[1] * obs_scale]
-            yield obj.pos, (0, 255, 0)
-            yield obs_pos, (255, 0, 0)
+            yield obj.pos, (255, 0, 0)
+
+            if self.integrate_on_scale: observed_time = self.get_observed_time_over_scale(obj, time)
+            else: observed_time = self.get_observed_time_over_time(obj, time)
+            scale_at_obs = self.scale_factor.get_at_time(observed_time)
+            pos_at_obs = [obj.dim_pos[0] * scale_at_obs, obj.dim_pos[1] * scale_at_obs]
+            yield pos_at_obs, (0, 255, 0)
+
+            implied_distance = self.light_speed.initial_value * (time - observed_time)
+            implied_pos = [obj.dim_pos[0] * (implied_distance / math.sqrt(obj.dim_pos[0]**2 + obj.dim_pos[1]**2)),
+                           obj.dim_pos[1] * (implied_distance / math.sqrt(obj.dim_pos[0]**2 + obj.dim_pos[1]**2))]
+            yield implied_pos, (0, 0, 255)
 
 def random_space(num=100, spread=200.0):
     objs = []
@@ -206,7 +236,15 @@ def draw(sim):
     sim.graph.draw(screen, None, pos=(10, 10))
 
     # draw HUD (top-right)
-    sim.hud.draw(screen, [("t", f"{sim.sim_time:.2f}s"), ("a", f"{sim.space.scale_factor.get():.2f}"), ("t_Λ", f"{sim.space.t_lambda:.2f}s")])
+    sim.hud.draw(screen, [
+        ("t", f"{sim.sim_time:.2f}s"), 
+        ("a", f"{sim.space.scale_factor.get():.2f}"), 
+        ("t_Λ", f"{sim.space.t_lambda:.2f}s"),
+        ("c", f"{sim.space.light_speed.get():.2f}"),
+        ("Blue:", "Apparent Pos Now"),
+        ("Green:", "Pos When Emitted"),
+        ("Red:", "Pos Now"),
+    ])
 
     pygame.display.flip()
 
@@ -226,7 +264,7 @@ def main():
 
     args = parser.parse_args()
 
-    space = random_space(10, 200)
+    space = random_space(100, 200)
     sim = Simulator(space, width=args.width, height=args.height, scale=args.scale, dot_size=args.dot_size, save_interval=args.save_interval)
     init_ui(sim)
     sim.run(60, draw, [(20, update_graph)])
